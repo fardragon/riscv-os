@@ -1,4 +1,6 @@
-use crate::memory::{get_kernel_end, get_page_size};
+use core::mem;
+use crate::{kprintln_early, kprint_early, EarlyConsole};
+use crate::memory::{get_kernel_end, PAGE_SIZE, Address};
 use crate::sync::Mutex;
 
 #[repr(C)]
@@ -7,12 +9,11 @@ struct Page {
 	next: *mut Page,
 }
 
-const PAGE_SIZE: u64 = get_page_size();
 const ALLOC_PAGE_SENTINEL: u8 = 5;
 const DEALLOC_PAGE_SENTINEL: u8 = 1;
 
 struct KernelPageAllocator {
-	free_list: *mut Page
+	free_list: *mut Page,
 }
 
 impl KernelPageAllocator {
@@ -23,24 +24,30 @@ impl KernelPageAllocator {
 	}
 
 	fn init(&mut self) {
-		let start = unsafe{(KernelPageAllocator::align_to_page_size(get_kernel_end()))};
-		let end = 128 * 1024 * 1024;
+		let mut start = get_kernel_end().round_up_to_page_boundary();
+		let end = Address(0x80000000).add(128 * 1024 * 1024);
 
-		assert_eq!(start as u64 % PAGE_SIZE, 0, "Unaligned first page")
+		assert_eq!(start.get() % PAGE_SIZE, 0, "Unaligned first page");
 
+		kprintln_early!("KernelPageAllocator init start: {:p} end: {:p}", start.get_ptr(), end.get_ptr());
+
+		while start < end {
+			self.deallocate_page(start);
+			start = start.add(PAGE_SIZE);
+		}
 	}
 
-	fn deallocate_page(&mut self, memory: *mut u8) {
+	fn deallocate_page(&mut self, memory: Address) {
 		unsafe {
-			KernelPageAllocator::memset_page(memory, DEALLOC_PAGE_SENTINEL);
-			let page = memory as *mut Page;
+			// KernelPageAllocator::memset_page(memory, DEALLOC_PAGE_SENTINEL);
+
+			let page = memory.get_mut_ptr() as *mut Page;
 			(*page).next = self.free_list;
 			self.free_list = page;
 		}
 	}
 
-	fn allocate_page(&mut self) -> *mut u8 {
-
+	fn allocate_page(&mut self, sentinel: u8) -> Address {
 		if self.free_list == 0 as *mut Page {
 			panic!("Failed to allocate page");
 		}
@@ -50,20 +57,31 @@ impl KernelPageAllocator {
 			let page = self.free_list;
 			self.free_list = (*page).next;
 
-			KernelPageAllocator::memset_page(page as *mut u8, ALLOC_PAGE_SENTINEL);
-
-			page as *mut u8
+			KernelPageAllocator::memset_page(Address(page as u64), sentinel);
+			Address(page as u64)
 		}
 	}
 
-	unsafe fn align_to_page_size(pointer : *mut u8) -> *mut u8 {
-		let offset = PAGE_SIZE as usize - (pointer as u64 % PAGE_SIZE) as usize;
-		pointer.add(offset)
-	}
 
-	unsafe fn memset_page(memory: *mut u8, value: u8) {
-		for offset in 0..PAGE_SIZE as usize {
-			memory.add(offset).write(value);
+
+	unsafe fn memset_page(memory: Address, value: u8) {
+		let c: usize = mem::transmute([value as u8; 8]);
+		let n_usize: u64 = PAGE_SIZE / 8;
+		let mut i: u64 = 0;
+
+		// Set `WORD_SIZE` bytes at a time
+		let n_fast = n_usize * 8;
+		while i < n_fast {
+			*((memory.get() + i) as *mut usize) = c;
+			i += 8;
+		}
+
+		let c = c as u8;
+
+		// Set 1 byte at a time
+		while i < PAGE_SIZE {
+			*((memory.get() + i) as *mut u8) = c;
+			i += 1;
 		}
 	}
 }
@@ -76,9 +94,13 @@ pub fn kalloc_init() {
 }
 
 pub fn kalloc() -> *mut u8 {
-	ALLOCATOR.lock().allocate_page()
+	ALLOCATOR.lock().allocate_page(ALLOC_PAGE_SENTINEL).get_mut_ptr()
+}
+
+pub fn kzalloc() -> *mut u8 {
+	ALLOCATOR.lock().allocate_page(0).get_mut_ptr()
 }
 
 pub fn kfree(pointer: *mut u8) {
-	ALLOCATOR.lock().deallocate_page(pointer)
+	ALLOCATOR.lock().deallocate_page(Address(pointer as u64))
 }

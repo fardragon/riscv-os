@@ -1,6 +1,7 @@
 static mut BOOT_HART_ID: usize = 0;
 
 use core::arch::{asm};
+use crate::{kprintln_early, kprint_early, EarlyConsole};
 
 // global_asm!(include_str!("asm/boot.S"));
 // global_asm!(include_str!("asm/mem.S"));
@@ -40,5 +41,7 @@ unsafe extern "C" fn _start(hart_id: usize, fdt: usize) -> ! {
 
 #[repr(align(4))]
 extern "C" fn fail() -> ! {
+	kprintln_early!("Supervisor trap");
+	kprintln_early!("scause = {:?}", crate::cpu::RISCV64{}.scause());
 	loop {}
 }

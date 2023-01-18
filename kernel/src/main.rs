@@ -16,7 +16,8 @@ mod sync;
 
 use core::arch::asm;
 use crate::fdt::DeviceTree;
-use crate::memory::kalloc::kalloc_init;
+use crate::memory::kalloc_init;
+use crate::memory::mmu_init;
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
@@ -53,18 +54,19 @@ extern "C" fn kinit(_hart_id: usize, fdt: *const u32) {
 	kprintln_early!("|  ()  |");
 	kprintln_early!("|______|");
 
-	kprintln_early!("END: {:p}", memory::get_kernel_end());
+	kprintln_early!("END: {:p}", memory::get_kernel_end().get_ptr());
 
 
 	kalloc_init();
+	mmu_init();
 
 	let cpu = cpu::RISCV64{};
 	// kprintln_early!("{:x?}", cpu.sstatus());
 
 	let device_tree = DeviceTree::new(fdt).expect("Failed to parse device tree");
 	kprintln_early!("Device tree header: {:?}", device_tree);
-	device_tree.walk();
-
+	// device_tree.walk();
+	kprintln_early!("Kernel init complete");
 
 	loop {
 	}

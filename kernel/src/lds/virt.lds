@@ -3,6 +3,7 @@ ENTRY(_start);
 SECTIONS {
     . = 0x80200000;
     .text : {
+        . = ALIGN(0x1000);
         PROVIDE(__text_start = .);
         *(.text.init)
         *(.text .text.*)
@@ -10,6 +11,8 @@ SECTIONS {
     }
 
     .data : {
+        . = ALIGN(0x1000);
+        PROVIDE(__data_start = .);
         *(.data .data.* .rodata .rodata.*)
         . = ALIGN(8);
         PROVIDE(__global_pointer$ = .);
@@ -20,6 +23,7 @@ SECTIONS {
         *(.bss .bss.*)
         . = ALIGN(4);
         PROVIDE(__bss_end = .);
+        PROVIDE(__data_end = .);
     }
 
     .kernel_stack : ALIGN(8) {

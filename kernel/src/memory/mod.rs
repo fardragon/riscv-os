@@ -1,6 +1,9 @@
 pub mod memory_layout;
 pub mod kalloc;
-pub mod pagetable;
+pub mod mmu;
 
-pub use memory_layout::{get_kernel_end, get_page_size};
-pub use kalloc::{kalloc_init, kalloc, kfree};
+
+pub use memory_layout::{Address, get_kernel_end, get_kernel_base, get_kernel_data_start,
+						get_kernel_data_end, PAGE_SIZE, MAX_SV39_ADDRESS};
+pub use kalloc::{kalloc_init, kalloc, kzalloc, kfree};
+pub use mmu::mmu_init;
